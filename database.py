@@ -39,6 +39,8 @@ def init_db():
                 source_listing_id TEXT,
                 owner_name TEXT,
                 owner_phone TEXT,
+                address TEXT,
+                landmark TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             )
             """
@@ -55,6 +57,10 @@ def init_db():
             conn.execute("ALTER TABLE listings ADD COLUMN owner_name TEXT")
         if "owner_phone" not in existing_cols:
             conn.execute("ALTER TABLE listings ADD COLUMN owner_phone TEXT")
+        if "address" not in existing_cols:
+            conn.execute("ALTER TABLE listings ADD COLUMN address TEXT")
+        if "landmark" not in existing_cols:
+            conn.execute("ALTER TABLE listings ADD COLUMN landmark TEXT")
 
 
 def add_listing(
@@ -69,17 +75,19 @@ def add_listing(
     description: str = "",
     contact: str = "",
     source_listing_id: Optional[str] = None,
+    address: Optional[str] = None,
+    landmark: Optional[str] = None,
 ) -> int:
     """Добавляет объявление, возвращает его id."""
     with get_connection() as conn:
         cur = conn.execute(
             """
             INSERT INTO listings (region, rooms, floor, floors_total, area, price, property_type,
-                                   title, description, contact, source_listing_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   title, description, contact, source_listing_id, address, landmark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (region, rooms, floor, floors_total, area, price, property_type,
-             title, description, contact, source_listing_id),
+             title, description, contact, source_listing_id, address, landmark),
         )
         return cur.lastrowid
 

@@ -184,6 +184,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("👤 Введите имя владельца:")
         return
 
+    if data.startswith("request_photos:"):
+        listing_id = int(data.split(":", 1)[1])
+        await handle_request_photos(update, context, listing_id)
+        return
+
     if data.startswith("custom:"):
         field = data.split(":", 1)[1]
         context.user_data["awaiting_custom"] = field
@@ -530,18 +535,53 @@ async def show_results(query, context: ContextTypes.DEFAULT_TYPE):
 
 
 def _format_listing_card(row, show_owner: bool = False) -> str:
-    """Форматирует одну карточку объявления. Если show_owner=True (только для админа),
-    добавляет приватный блок с данными владельца, который никогда не виден обычным пользователям."""
+    """
+    Форматирует карточку объявления в стиле:
+
+    ⚜️ Район: ...
+    🏬 Адрес: ...
+    📍 Ориентир: ...
+
+    🔻 Комнат: ...
+    🔻 Этаж: ...
+    🏢 Этажность: ...
+    📐 Площадь: ...
+    🏷 Тип: ...
+
+    💰 Цена: $...
+
+    🆔 #...
+
+    Внизу добавляются контакты администратора (видны всем). Если show_owner=True
+    (только для админа), дополнительно добавляется приватный блок с владельцем,
+    который никогда не виден обычным пользователям.
+    """
     type_label = "🏠 Жилой" if row["property_type"] == "residential" else "🏢 Нежилой"
-    title = row["title"] or "Без названия"
     floors_total = row["floors_total"] if row["floors_total"] is not None else "?"
     area = f"{row['area']:.0f} м²" if row["area"] is not None else "—"
+    address = row["address"] if "address" in row.keys() and row["address"] else None
+    landmark = row["landmark"] if "landmark" in row.keys() and row["landmark"] else None
 
-    card = (
-        f"#{row['id']} {title}\n"
-        f"📍 {row['region']} | 🚪 {row['rooms']} комн. | 🏢 этаж {row['floor']}/{floors_total} | "
-        f"📐 {area} | 💰 ${row['price']:,}".replace(",", " ") + f" | {type_label}"
-    )
+    lines = [f"⚜️ Район: {row['region']}"]
+    if address:
+        lines.append(f"🏬 Адрес: {address}")
+    if landmark:
+        lines.append(f"📍 Ориентир: {landmark}")
+    lines.append("")
+    lines.append(f"🔻 Комнат: {row['rooms']}")
+    lines.append(f"🔻 Этаж: {row['floor']}")
+    lines.append(f"🏢 Этажность: {floors_total}")
+    lines.append(f"📐 Площадь: {area}")
+    lines.append(f"🏷 Тип: {type_label}")
+    lines.append("")
+    lines.append(f"💰 Цена: ${row['price']:,}".replace(",", " "))
+    lines.append("")
+    lines.append(f"🆔 #{row['id']}")
+    lines.append("")
+    lines.append(f"📞 Администратор: {config.ADMIN_PHONE}")
+    lines.append(f"👤 Telegram: {config.ADMIN_USERNAME}")
+
+    card = "\n".join(lines)
 
     if show_owner:
         owner_name = row["owner_name"] if "owner_name" in row.keys() else None
@@ -558,13 +598,19 @@ def _format_listing_card(row, show_owner: bool = False) -> str:
     return card
 
 
-def kb_id_search_result(listing_id: int, is_admin: bool) -> Optional[InlineKeyboardMarkup]:
-    """Кнопка «Редактировать» видна только админу, и только при поиске объявления по ID."""
-    if not is_admin:
-        return None
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Редактировать владельца", callback_data=f"edit_owner:{listing_id}")]
-    ])
+def kb_id_search_result(listing_id: int, is_admin: bool) -> InlineKeyboardMarkup:
+    """
+    Кнопки под карточкой при поиске по ID:
+      - «Связаться с администратором и запросить фото» — видна всем пользователям.
+      - «✏️ Редактировать владельца» — видна только админу.
+    """
+    rows = [[InlineKeyboardButton(
+        "Связаться с администратором и запросить фото",
+        callback_data=f"request_photos:{listing_id}",
+    )]]
+    if is_admin:
+        rows.append([InlineKeyboardButton("✏️ Редактировать владельца", callback_data=f"edit_owner:{listing_id}")])
+    return InlineKeyboardMarkup(rows)
 
 
 async def handle_id_search(update: Update, context: ContextTypes.DEFAULT_TYPE, listing_id: int):
@@ -581,6 +627,44 @@ async def handle_id_search(update: Update, context: ContextTypes.DEFAULT_TYPE, l
     text = _format_listing_card(row, show_owner=is_admin)
     reply_markup = kb_id_search_result(listing_id, is_admin)
     await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def handle_request_photos(update: Update, context: ContextTypes.DEFAULT_TYPE, listing_id: int):
+    """
+    Обрабатывает нажатие кнопки "Связаться с администратором и запросить фото".
+    Пересылает карточку объявления администратору вместе с username/ID клиента,
+    чтобы админ знал, кому отправить фотографии дома.
+    """
+    query = update.callback_query
+    row = db.get_listing_by_id(listing_id)
+    if not row:
+        await query.message.reply_text("😕 Объявление не найдено.")
+        return
+
+    client = query.from_user
+    client_username = f"@{client.username}" if client.username else "(username не указан)"
+    client_name = " ".join(filter(None, [client.first_name, client.last_name])) or "Без имени"
+
+    forward_text = (
+        f"📩 Запрос фотографий по объявлению\n\n"
+        f"{_format_listing_card(row, show_owner=False)}\n\n"
+        f"👤 От клиента: {client_name}\n"
+        f"🔗 Username: {client_username}\n"
+        f"🆔 Telegram ID: {client.id}"
+    )
+
+    sent_to_admin = False
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await context.bot.send_message(chat_id=admin_id, text=forward_text)
+            sent_to_admin = True
+        except Exception:
+            logger.exception(f"Не удалось отправить запрос фото админу {admin_id}")
+
+    if sent_to_admin:
+        await query.message.reply_text("✅ Запрос отправлен администратору. Он свяжется с вами и пришлёт фото.")
+    else:
+        await query.message.reply_text("⚠️ Не удалось связаться с администратором. Попробуйте позже.")
 
 
 async def handle_owner_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
@@ -690,6 +774,8 @@ async def handle_admin_listing_text(update: Update, context: ContextTypes.DEFAUL
         description=parsed.landmark or "",
         contact="",
         source_listing_id=parsed.source_listing_id,
+        address=parsed.address,
+        landmark=parsed.landmark,
     )
 
     await update.message.reply_text(f"✅ Объявление добавлено в базу (запись #{listing_id}).")

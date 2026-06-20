@@ -16,6 +16,11 @@ CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "@ваш_канал")
 _admin_ids_raw = os.environ.get("ADMIN_IDS", "")
 ADMIN_IDS = [int(x.strip()) for x in _admin_ids_raw.split(",") if x.strip().isdigit()]
 
+# Контакты администратора — отображаются в каждой карточке объявления (видны всем пользователям),
+# чтобы клиент мог напрямую связаться по телефону или в Telegram.
+ADMIN_PHONE = os.environ.get("ADMIN_PHONE", "+998200100052")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "@ENTRNCEE")
+
 # 1) Регионы — 12 районов города Ташкента.
 REGIONS = [
     "Чиланзар",
@@ -87,6 +92,7 @@ DISTRICT_ALIASES = {
     "yunusobod": "Юнусабад",
     "mirzo-ulugbek": "Мирзо Улугбек",
     "mirzo ulugbek": "Мирзо Улугбек",
+    "mirzo_ulugbek": "Мирзо Улугбек",
     "mirabad": "Миробод",
     "mirobod": "Миробод",
     "shaykhantahur": "Шайхантахур",
