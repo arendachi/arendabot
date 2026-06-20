@@ -37,6 +37,8 @@ def init_db():
                 description TEXT,
                 contact TEXT,
                 source_listing_id TEXT,
+                owner_name TEXT,
+                owner_phone TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             )
             """
@@ -49,6 +51,10 @@ def init_db():
             conn.execute("ALTER TABLE listings ADD COLUMN area REAL")
         if "source_listing_id" not in existing_cols:
             conn.execute("ALTER TABLE listings ADD COLUMN source_listing_id TEXT")
+        if "owner_name" not in existing_cols:
+            conn.execute("ALTER TABLE listings ADD COLUMN owner_name TEXT")
+        if "owner_phone" not in existing_cols:
+            conn.execute("ALTER TABLE listings ADD COLUMN owner_phone TEXT")
 
 
 def add_listing(
@@ -160,6 +166,20 @@ def get_listing_by_source_id(source_listing_id: str) -> Optional[sqlite3.Row]:
         ).fetchone()
 
 
+def update_owner_info(listing_id: int, owner_name: str, owner_phone: str) -> bool:
+    """
+    Обновляет приватную информацию о владельце квартиры (видна только админу,
+    не публикуется в канал и не показывается обычным пользователям бота).
+    Возвращает True, если запись с таким id существует и была обновлена.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE listings SET owner_name = ?, owner_phone = ? WHERE id = ?",
+            (owner_name, owner_phone, listing_id),
+        )
+        return cur.rowcount > 0
+
+
 def get_listing_by_id(listing_id: int) -> Optional[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
@@ -173,16 +193,16 @@ def seed_demo_data():
             return
 
     demo = [
-        ("Ташкент", 1, 3, 9, 32.0, 45000, "residential", "Уютная студия в центре"),
-        ("Ташкент", 2, 5, 9, 54.0, 62000, "residential", "2-комнатная с балконом"),
-        ("Ташкент", 3, 9, 12, 78.0, 89000, "residential", "Просторная квартира у метро"),
-        ("Ташкент", 4, 2, 5, 95.0, 110000, "residential", "Семейная квартира с ремонтом"),
-        ("Самарканд", 1, 1, 4, 30.0, 28000, "residential", "Студия рядом с парком"),
-        ("Самарканд", 2, 4, 9, 48.0, 41000, "residential", "2 комнаты, новый дом"),
-        ("Самарканд", 3, 6, 9, 65.0, 55000, "non_residential", "Офисное помещение"),
-        ("Бухара", 2, 2, 4, 44.0, 35000, "residential", "2-комнатная квартира"),
-        ("Бухара", 1, 7, 9, 38.0, 30000, "non_residential", "Помещение под магазин"),
-        ("Андижан", 3, 3, 5, 60.0, 47000, "residential", "3-комнатная квартира"),
+        ("Чиланзар", 1, 3, 9, 32.0, 280, "residential", "Уютная студия в центре"),
+        ("Чиланзар", 2, 5, 9, 54.0, 450, "residential", "2-комнатная с балконом"),
+        ("Юнусабад", 3, 9, 12, 78.0, 700, "residential", "Просторная квартира у метро"),
+        ("Юнусабад", 4, 2, 5, 95.0, 950, "residential", "Семейная квартира с ремонтом"),
+        ("Мирзо Улугбек", 1, 1, 4, 30.0, 320, "residential", "Студия рядом с парком"),
+        ("Мирзо Улугбек", 2, 4, 9, 48.0, 480, "residential", "2 комнаты, новый дом"),
+        ("Миробод", 3, 6, 9, 65.0, 650, "non_residential", "Офисное помещение"),
+        ("Яккасарай", 2, 2, 4, 44.0, 400, "residential", "2-комнатная квартира"),
+        ("Сергели", 1, 7, 9, 38.0, 350, "non_residential", "Помещение под магазин"),
+        ("Алмазар", 3, 3, 5, 60.0, 550, "residential", "3-комнатная квартира"),
     ]
     for region, rooms, floor, floors_total, area, price, ptype, title in demo:
         add_listing(region, rooms, floor, price, ptype, floors_total=floors_total, area=area, title=title)
