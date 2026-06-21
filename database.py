@@ -41,6 +41,7 @@ def init_db():
                 owner_phone TEXT,
                 address TEXT,
                 landmark TEXT,
+                photos_public INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now'))
             )
             """
@@ -61,6 +62,8 @@ def init_db():
             conn.execute("ALTER TABLE listings ADD COLUMN address TEXT")
         if "landmark" not in existing_cols:
             conn.execute("ALTER TABLE listings ADD COLUMN landmark TEXT")
+        if "photos_public" not in existing_cols:
+            conn.execute("ALTER TABLE listings ADD COLUMN photos_public INTEGER NOT NULL DEFAULT 0")
 
         conn.execute(
             """
@@ -243,6 +246,21 @@ def count_listing_photos(listing_id: int) -> int:
             "SELECT COUNT(*) AS c FROM listing_photos WHERE listing_id = ?", (listing_id,)
         ).fetchone()
         return row["c"]
+
+
+def set_photos_public(listing_id: int, public: bool) -> bool:
+    """
+    Переключает видимость фотографий объявления для обычных пользователей.
+    public=True  — фото видны всем при поиске по ID.
+    public=False — фото видны только админу (по умолчанию).
+    Возвращает True, если объявление существует и было обновлено.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE listings SET photos_public = ? WHERE id = ?",
+            (1 if public else 0, listing_id),
+        )
+        return cur.rowcount > 0
 
 
 def seed_demo_data():
