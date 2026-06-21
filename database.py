@@ -62,6 +62,22 @@ def init_db():
         if "landmark" not in existing_cols:
             conn.execute("ALTER TABLE listings ADD COLUMN landmark TEXT")
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS listing_photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                listing_id INTEGER NOT NULL,
+                file_id TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_listing_photos_listing_id ON listing_photos(listing_id)"
+        )
+
 
 def add_listing(
     region: str,
@@ -191,6 +207,42 @@ def update_owner_info(listing_id: int, owner_name: str, owner_phone: str) -> boo
 def get_listing_by_id(listing_id: int) -> Optional[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+
+
+def replace_listing_photos(listing_id: int, file_ids: list[str]) -> bool:
+    """
+    Полностью заменяет фотографии объявления: удаляет все старые и сохраняет новые
+    (до 10 штук) в переданном порядке. Возвращает True, если объявление существует.
+    """
+    with get_connection() as conn:
+        exists = conn.execute("SELECT 1 FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        if not exists:
+            return False
+        conn.execute("DELETE FROM listing_photos WHERE listing_id = ?", (listing_id,))
+        for position, file_id in enumerate(file_ids[:10]):
+            conn.execute(
+                "INSERT INTO listing_photos (listing_id, file_id, position) VALUES (?, ?, ?)",
+                (listing_id, file_id, position),
+            )
+        return True
+
+
+def get_listing_photos(listing_id: int) -> list[str]:
+    """Возвращает список file_id фотографий объявления в порядке добавления."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT file_id FROM listing_photos WHERE listing_id = ? ORDER BY position",
+            (listing_id,),
+        ).fetchall()
+        return [row["file_id"] for row in rows]
+
+
+def count_listing_photos(listing_id: int) -> int:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM listing_photos WHERE listing_id = ?", (listing_id,)
+        ).fetchone()
+        return row["c"]
 
 
 def seed_demo_data():

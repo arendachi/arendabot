@@ -164,6 +164,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "/start — начать новый поиск по фильтрам\n"
+        "/done — завершить досрочную загрузку фотографий (для админа)\n"
         "/help — это сообщение"
     )
 
@@ -182,6 +183,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return  # дополнительная защита: даже если кто-то подделает callback_data, действие не выполнится
         context.user_data["editing_owner"] = {"listing_id": listing_id, "stage": "name"}
         await query.message.reply_text("👤 Введите имя владельца:")
+        return
+
+    if data.startswith("add_photos:"):
+        listing_id = int(data.split(":", 1)[1])
+        if update.effective_user.id not in config.ADMIN_IDS:
+            return  # та же защита от подделки callback_data, что и для edit_owner
+        context.user_data["collecting_photos"] = {"listing_id": listing_id, "file_ids": []}
+        await query.message.reply_text(
+            f"📷 Пришлите до 10 фотографий для объявления #{listing_id}.\n\n"
+            f"Когда закончите — просто остановитесь (если фото меньше 10), либо отправьте "
+            f"команду /done. После 10-й фотографии приём завершится автоматически.\n\n"
+            f"⚠️ Новые фото полностью заменят старые, если они уже были загружены."
+        )
         return
 
     if data.startswith("request_photos:"):
@@ -602,14 +616,17 @@ def kb_id_search_result(listing_id: int, is_admin: bool) -> InlineKeyboardMarkup
     """
     Кнопки под карточкой при поиске по ID:
       - «Связаться с администратором и запросить фото» — видна всем пользователям.
-      - «✏️ Редактировать владельца» — видна только админу.
+      - «✏️ Редактировать владельца» и «📷 Добавить фото» — видны только админу.
     """
     rows = [[InlineKeyboardButton(
         "Связаться с администратором и запросить фото",
         callback_data=f"request_photos:{listing_id}",
     )]]
     if is_admin:
-        rows.append([InlineKeyboardButton("✏️ Редактировать владельца", callback_data=f"edit_owner:{listing_id}")])
+        rows.append([
+            InlineKeyboardButton("✏️ Редактировать владельца", callback_data=f"edit_owner:{listing_id}"),
+            InlineKeyboardButton("📷 Добавить фото", callback_data=f"add_photos:{listing_id}"),
+        ])
     return InlineKeyboardMarkup(rows)
 
 
@@ -665,6 +682,66 @@ async def handle_request_photos(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text("✅ Запрос отправлен администратору. Он свяжется с вами и пришлёт фото.")
     else:
         await query.message.reply_text("⚠️ Не удалось связаться с администратором. Попробуйте позже.")
+
+
+async def _finish_photo_collection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохраняет собранные фотографии в базу (полностью заменяя старые) и завершает режим приёма."""
+    pending = context.user_data.get("collecting_photos")
+    if not pending:
+        return
+
+    listing_id = pending["listing_id"]
+    file_ids = pending["file_ids"]
+    context.user_data["collecting_photos"] = None
+
+    if not file_ids:
+        await update.message.reply_text("⚠️ Вы не отправили ни одной фотографии — ничего не сохранено.")
+        return
+
+    ok = db.replace_listing_photos(listing_id, file_ids)
+    if ok:
+        await update.message.reply_text(
+            f"✅ Сохранено {len(file_ids)} фото для объявления #{listing_id}. "
+            f"Старые фотографии (если были) заменены."
+        )
+    else:
+        await update.message.reply_text(f"⚠️ Не удалось найти объявление #{listing_id} для сохранения фото.")
+
+
+async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Принимает фотографию от админа, пока активен режим сбора (после кнопки "📷 Добавить фото").
+    Если фото не от админа в режиме сбора — сообщение тихо игнорируется этим хендлером.
+    Автоматически завершает приём на 10-й фотографии.
+    """
+    pending = context.user_data.get("collecting_photos")
+    if not pending:
+        return  # админ не находится в режиме добавления фото — это сообщение не для нас
+
+    if update.effective_user.id not in config.ADMIN_IDS:
+        return  # дополнительная защита от подделки состояния
+
+    # Telegram присылает фото в нескольких размерах — берём самый большой (последний в списке)
+    largest_photo = update.message.photo[-1]
+    pending["file_ids"].append(largest_photo.file_id)
+    count = len(pending["file_ids"])
+
+    if count >= 10:
+        await update.message.reply_text(f"📷 Получено {count}/10 фотографий. Достигнут лимит, сохраняю...")
+        await _finish_photo_collection(update, context)
+    else:
+        await update.message.reply_text(
+            f"📷 Получено {count}/10 фотографий. Присылайте ещё, или отправьте /done, если закончили."
+        )
+
+
+async def handle_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /done — досрочно завершает приём фотографий, если их меньше 10."""
+    pending = context.user_data.get("collecting_photos")
+    if not pending:
+        await update.message.reply_text("Сейчас нет активного приёма фотографий.")
+        return
+    await _finish_photo_collection(update, context)
 
 
 async def handle_owner_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
@@ -843,7 +920,9 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("done", handle_done_command))
     application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     logger.info("Бот запущен и ожидает сообщений...")
