@@ -1,0 +1,26 @@
+{
+  "name": "arendabot",
+  "version": "1.0.0",
+  "description": "Bot для парсинга объявлений об аренде с JoyEstate",
+  "main": "index.js",
+  "scripts": {
+    "scrape": "node scraper_joyestate.js",
+    "scrape:watch": "node scraper_joyestate.js && watch 'npm run scrape' data/",
+    "update-db": "node scraper_joyestate.js"
+  },
+  "keywords": [
+    "arenда",
+    "joyestate",
+    "bot",
+    "parser",
+    "scraper"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "devDependencies": {
+    "node-watch": "^0.7.10"
+  }
+}
