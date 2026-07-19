@@ -1,0 +1,42 @@
+# Зависимости
+node_modules/
+package-lock.json
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Окружение
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Логи
+logs/
+*.log
+npm-debug.log*
+
+# Данные (бэкапы)
+# Раскомментируйте, если не хотите коммитить основные данные
+# data/listings.json
+# data/listings_backup.json
+
+# Временные файлы
+tmp/
+temp/
+cache/
+*.tmp
+
+# Браузер Chrome/Chromium
+user-data-dir/
+.chrome_history
