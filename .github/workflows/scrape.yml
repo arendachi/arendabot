@@ -37,7 +37,7 @@ jobs:
 
       # Устанавливаем зависимости
       - name: 📥 Install dependencies
-        run: npm ci
+        run: npm install
 
       # Создаём папку для логов
       - name: 📁 Create logs directory
@@ -45,6 +45,7 @@ jobs:
 
       # Запускаем парсер
       - name: 🕷️ Run scraper
+        continue-on-error: true
         run: npm run scrape 2>&1 | tee logs/scraper.log
         env:
           CI: true
@@ -78,9 +79,9 @@ jobs:
                      -m "🤖 GitHub Actions: ${{ github.run_id }}"
           git push
 
-      # Отправляем уведомление при ошибке
+      # Отправляем уведомление при ошибке (только для push и pull request)
       - name: 🚨 Notify on failure
-        if: failure()
+        if: failure() && github.event_name != 'schedule'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -100,6 +101,7 @@ jobs:
           name: scraper-logs
           path: logs/
           retention-days: 30
+          if-no-files-found: warn
 
       # Отправляем статистику
       - name: 📊 Print statistics
