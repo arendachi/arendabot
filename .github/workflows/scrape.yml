@@ -5,10 +5,8 @@ on:
     # Каждый день в 03:00 UTC (05:00 Ташкент)
     - cron: '0 3 * * *'
   
-  # Можно также запустить вручную
   workflow_dispatch:
   
-  # Или при пуше в main
   push:
     branches:
       - main
@@ -22,97 +20,86 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # Клонируем репозиторий
       - name: ✅ Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Устанавливаем Node.js
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
 
-      # Устанавливаем зависимости
-      - name: 📥 Install dependencies
-        run: npm install
-
-      # Создаём папку для логов
       - name: 📁 Create logs directory
         run: mkdir -p logs
 
-      # Запускаем парсер
+      - name: 📥 Install dependencies
+        run: |
+          if [ -f "package-lock.json" ]; then
+            npm ci
+          else
+            npm install
+          fi
+
       - name: 🕷️ Run scraper
+        id: scraper
         continue-on-error: true
-        run: npm run scrape 2>&1 | tee logs/scraper.log
+        run: |
+          npm run scrape 2>&1 | tee logs/scraper.log
         env:
           CI: true
 
-      # Проверяем, изменились ли данные
       - name: 🔍 Check for changes
         id: verify
+        continue-on-error: true
         run: |
-          if git diff --quiet data/listings.json; then
-            echo "changed=false" >> $GITHUB_OUTPUT
+          if [ -f "data/listings.json" ]; then
+            if git diff --quiet data/listings.json; then
+              echo "changed=false" >> $GITHUB_OUTPUT
+            else
+              echo "changed=true" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
-      # Настраиваем Git для коммита
       - name: ⚙️ Configure Git
         if: steps.verify.outputs.changed == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-      # Коммитим и пушим изменения
       - name: 📤 Commit and push
         if: steps.verify.outputs.changed == 'true'
+        continue-on-error: true
         run: |
           git add data/listings.json
           git add logs/scraper.log || true
           git commit -m "🔄 Update listings: $(date '+%Y-%m-%d %H:%M:%S UTC')" \
                      -m "✨ Автоматическое обновление базы данных" \
-                     -m "📊 Объявлений найдено: $(wc -l < data/listings.json)" \
-                     -m "🤖 GitHub Actions: ${{ github.run_id }}"
+                     -m "📊 GitHub Actions: ${{ github.run_id }}"
           git push
 
-      # Отправляем уведомление при ошибке (только для push и pull request)
-      - name: 🚨 Notify on failure
-        if: failure() && github.event_name != 'schedule'
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: "❌ Ошибка при запуске парсера!\n\nПроверьте [логи действия](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            })
-
-      # Сохраняем логи как артифакт
       - name: 📎 Upload logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: scraper-logs
           path: logs/
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: ignore
 
-      # Отправляем статистику
       - name: 📊 Print statistics
         if: always()
+        continue-on-error: true
         run: |
           echo "=== Статистика парсера ==="
-          echo "Файл: data/listings.json"
           if [ -f "data/listings.json" ]; then
+            echo "Файл: data/listings.json"
             SIZE=$(wc -c < data/listings.json | numfmt --to=iec-i --suffix=B)
             LINES=$(wc -l < data/listings.json)
             echo "Размер: $SIZE"
             echo "Строк: $LINES"
           fi
-          echo "Время завершения: $(date)"
+          echo "Время: $(date)"
