@@ -1,4 +1,19 @@
-selenium>=4.13.0
-beautifulsoup4>=4.12.0
-webdriver-manager>=4.0.0
-requests>=2.31.0
+# 🤖 JoyEstate Bot - Python зависимости
+# Обновлено: 2026-01-15
+
+# Веб-скрейпинг
+selenium>=4.15.0           # Браузер автоматизация
+beautifulsoup4>=4.12.0     # HTML парсинг
+webdriver-manager>=4.0.1   # Автозагрузка ChromeDriver
+
+# Сетевые запросы
+requests>=2.31.0           # HTTP клиент
+urllib3>=2.1.0             # HTTP библиотека
+
+# Обработка данных
+pandas>=2.1.0              # Работа с таблицами (опционально)
+python-dateutil>=2.8.2     # Работа с датами
+
+# Логирование и отладка
+python-dotenv>=1.0.0       # Переменные окружения
+colorama>=0.4.6            # Цветной вывод в консоль
