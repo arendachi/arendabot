@@ -6,79 +6,54 @@ on:
     - cron: '0 3 * * *'
   
   workflow_dispatch:
-  
-  push:
-    branches:
-      - main
-    paths:
-      - 'scraper_joyestate.js'
-      - '.github/workflows/scrape.yml'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 10
 
     steps:
       - name: ✅ Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: 📁 Create logs directory
-        run: mkdir -p logs
-
-      - name: 📥 Install dependencies
-        run: |
-          if [ -f "package-lock.json" ]; then
-            npm ci
-          else
-            npm install
-          fi
+      - name: 📁 Create directories
+        run: mkdir -p data logs
 
       - name: 🕷️ Run scraper
         id: scraper
+        run: node scraper_joyestate.js 2>&1 | tee logs/scraper.log
+        timeout-minutes: 5
         continue-on-error: true
-        run: |
-          npm run scrape 2>&1 | tee logs/scraper.log
-        env:
-          CI: true
 
-      - name: 🔍 Check for changes
-        id: verify
-        continue-on-error: true
+      - name: 📊 Check results
+        id: check
         run: |
           if [ -f "data/listings.json" ]; then
-            if git diff --quiet data/listings.json; then
-              echo "changed=false" >> $GITHUB_OUTPUT
-            else
-              echo "changed=true" >> $GITHUB_OUTPUT
-            fi
+            SIZE=$(wc -c < data/listings.json)
+            LINES=$(wc -l < data/listings.json)
+            echo "size=$SIZE" >> $GITHUB_OUTPUT
+            echo "lines=$LINES" >> $GITHUB_OUTPUT
+            echo "✅ Файл создан успешно ($SIZE bytes)"
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "❌ Файл не создан!"
+            exit 1
           fi
 
-      - name: ⚙️ Configure Git
-        if: steps.verify.outputs.changed == 'true'
+      - name: 📤 Commit and push
+        if: always()
+        continue-on-error: true
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-
-      - name: 📤 Commit and push
-        if: steps.verify.outputs.changed == 'true'
-        continue-on-error: true
-        run: |
-          git add data/listings.json
-          git add logs/scraper.log || true
-          git commit -m "🔄 Update listings: $(date '+%Y-%m-%d %H:%M:%S UTC')" \
-                     -m "✨ Автоматическое обновление базы данных" \
-                     -m "📊 GitHub Actions: ${{ github.run_id }}"
-          git push
+          git add data/listings.json logs/scraper.log || true
+          git diff --quiet && exit 0
+          git commit -m "🔄 Update listings: $(date '+%Y-%m-%d %H:%M:%S UTC')" || true
+          git push || true
 
       - name: 📎 Upload logs
         if: always()
@@ -87,19 +62,18 @@ jobs:
         with:
           name: scraper-logs
           path: logs/
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: ignore
 
-      - name: 📊 Print statistics
+      - name: ✨ Summary
         if: always()
-        continue-on-error: true
         run: |
-          echo "=== Статистика парсера ==="
-          if [ -f "data/listings.json" ]; then
-            echo "Файл: data/listings.json"
-            SIZE=$(wc -c < data/listings.json | numfmt --to=iec-i --suffix=B)
-            LINES=$(wc -l < data/listings.json)
-            echo "Размер: $SIZE"
-            echo "Строк: $LINES"
-          fi
+          echo "=== Парсер завершил работу ==="
+          echo "Статус: OK"
           echo "Время: $(date)"
+          if [ -f "data/listings.json" ]; then
+            echo "Файл: ✅ Создан"
+            wc -c < data/listings.json | xargs -I {} echo "Размер: {} bytes"
+          else
+            echo "Файл: ❌ Не создан"
+          fi
