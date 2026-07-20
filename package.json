@@ -1,38 +1,16 @@
 {
-  "name": "arendabot",
-  "version": "2.0.0",
-  "description": "🤖 Bot для автоматического парсинга всех объявлений об аренде с JoyEstate (18000+)",
-  "main": "index.js",
+  "name": "joyestate-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for JoyEstate listings",
+  "main": "telegram_bot.js",
   "scripts": {
-    "scrape": "node scraper_joyestate.js",
-    "scrape:optimized": "node scraper_joyestate_optimized.js",
-    "scrape:full": "node scraper_joyestate_optimized.js",
-    "scrape:watch": "nodemon scraper_joyestate_optimized.js"
+    "start": "node telegram_bot.js",
+    "dev": "TELEGRAM_BOT_TOKEN='YOUR_TOKEN_HERE' node telegram_bot.js"
   },
-  "keywords": [
-    "arendа",
-    "joyestate",
-    "bot",
-    "parser",
-    "scraper",
-    "uzbekistan",
-    "listings",
-    "real-estate",
-    "автоматизация"
-  ],
-  "author": "arendachi",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/arendachi/arendabot"
+  "dependencies": {
+    "node-telegram-bot-api": "^0.64.0"
   },
   "engines": {
     "node": ">=14.0.0"
-  },
-  "dependencies": {
-    "puppeteer": "^21.6.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
   }
 }
